@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>抽籤服務</title>
+  <!-- CSS only -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+  <style>
+    .boxie{
+      padding: 2px 5px;
+      border: 1px solid #0c0c0c;
+      border-radius: 5px;
+    }
+  </style>
+  <!-- JS only -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.19.0/js/md5.min.js" integrity="sha512-8pbzenDolL1l5OPSsoURCx9TEdMFTaeFipASVrMYKhuYtly+k3tcsQYliOEKTmuB1t7yuzAiVo+yd7SJz+ijFQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+
+    const createElement = async ( structure ) => {
+      let root = document.createElement( structure.el );
+      await appendObject( root, Object.assign({}, structure) );
+
+      if( typeof structure === "object" && typeof structure['childs'] == "object" ){
+        for( let child of structure.childs ){
+          let el = await createElement( child );
+          root.appendChild( el );
+        }
+      }
+      return root;
+    }
+
+    const appendObject = async ( root, parame ) => {
+      delete parame['el'];
+      delete parame['childs'];
+      for( let key in parame ){
+        if( !(key in root) ){
+          root[ key ] = new Object();
+        }
+        if( [ "string", "function" ].indexOf( typeof parame[key] ) > -1){
+          root[key] = parame[key];
+        }else{
+          await appendObject( root[key], parame[key] );
+        }   
+      }
+      return root;
+    }
+    // add laod event
+    window.addEventListener('load', function() {
+      // var hash = md5("password");
+      let form = document.querySelector("form");
+      form.onsubmit = main;
+      form.querySelector("[name='content']").oninput = dynamicLoadList;
+      dynamicLoadList( );
+
+      form.onsubmit = submitResult;
+    });
+
+    function main( ){
+      // get content of input[name="content"]
+    }
+
+    async function dynamicLoadList( ){
+      let delimiterList = {
+        '\\t': '\t',
+        'other': document.querySelector("[name='delimiter-other-text']").value,
+      }
+
+      let content = document.querySelector("[name='content']").value;
+      let delimiterValue = document.querySelector("[name='delimiter']:checked").value;
+      let delimiter = delimiterList[delimiterValue] || delimiterValue;
+
+      let list = getFiledHeader( content, delimiterList[delimiter] || delimiter );
+
+      let optList = [ ];
+      for( let key in list ){
+        optList.push({
+          el:"input",
+          type:"checkbox",
+          name:"option",
+          id:"option-" + key,
+          value:key,
+        });
+        optList.push( {
+          el:"label",
+          htmlFor:"option-" + key,
+          class:"lead",
+          innerText: `${list[key]}　`,
+        } );
+        optList.push( {
+          el:"br",
+        } );
+      }
+      let options = await createElement({
+        el: "div",
+        childs: optList
+      });
+      let optBox = document.querySelector("#option-box");
+      optBox.innerHTML = "";
+      optBox.appendChild( options );
+
+
+      let dispList = [ ];
+      for( let key in list ){
+        dispList.push({
+          el:"input",
+          type:"checkbox",
+          name:"disp",
+          id:"disp-" + key,
+          value:key,
+        });
+        dispList.push( {
+          el:"label",
+          htmlFor:"disp-" + key,
+          class:"lead",
+          innerText: `${list[key]}　`,
+        } );
+        dispList.push( {
+          el:"br",
+        } );
+      }
+      let disp = await createElement({
+        el: "div",
+        childs: dispList
+      });
+      let dispBox = document.querySelector("#display-box");
+      dispBox.innerHTML = "";
+      dispBox.appendChild( disp );
+    }
+
+    function getFiledHeader( content, fieldDelimiter ) {
+      let head = content.split("\n")[0];
+      let header = head.split( fieldDelimiter );
+      return header;
+    }
+
+    function submitResult( ){
+      try{
+        let result = document.querySelector("#result-box");
+  
+        let delimiterList = {
+          '\\t': '\t',
+          'other': document.querySelector("[name='delimiter-other-text']").value,
+        }
+  
+        let delimiterValue = document.querySelector("[name='delimiter']:checked").value;
+        let delimiter = delimiterList[delimiterValue] || delimiterValue;
+        let content = document.querySelector("[name='content']").value.split( "\n" ).map( v=>v.split( delimiter ) );
+  
+        let option = document.querySelector("[name='opt-content']").value.split("\n").map( v=>v.split(";") ).map( v=>new Object({ limit: parseInt(v[0]), option:v[1] }) );
+        let target = [];
+        for(let el of document.querySelectorAll("[name='option']:checked"))
+          target.push( parseInt( el.value ) );
+
+        let disp = [];
+        for(let el of document.querySelectorAll("[name='disp']:checked"))
+          disp.push( parseInt( el.value ) );
+
+        let finalResult = createResult( content, option, target, disp );
+        let resultText = "";
+        for( let key in finalResult ){
+          resultText += `${key}：\n`;
+          for( let el of finalResult[key] ){
+            resultText += `${el.join( delimiter )}\n`;
+          }
+          resultText+="-----------------------------\n";
+        }
+        result.value = resultText;
+      }catch(e){
+        console.error( e );
+      }
+      return false;
+    }
+
+    function createResult( content, options, target, display ){
+      // content 抽籤表單 two demension array
+      // options 抽籤選項 [{ limit: integer, option: string }]
+      // target  抽籤目標欄位
+      let result = new Object();
+      for( let option of options ){
+        let optionName = option.option;
+        result[ optionName ] = [ ];
+      }
+      result[ "無抽籤結果" ] = [];
+      // let result = content[0].filter( (v, i) => target.indexOf( i ) > -1 ).map( v => new Object( { title: v, list:[]} ) );
+      let hashIndex = content[0].length;
+      content[0].push("0-hash");
+      for(let i = 1; i < content.length; i++){
+        let row = content[i];
+        let hash = parseInt(md5(row.join("\t")).substr(0, 8), 36);
+        row.push( hash );
+      }
+      content = content.sort( (a, b) => a[hashIndex] - b[hashIndex] );
+      content.map( v=>{ v.pop(); return v } );
+      for( let t of target ){
+        for( let opt of options ){
+        // for every target
+          for( let i = 1 ; i < content.length ; i++ ){
+            let row = content[i];
+            let sel = row[t];
+            
+            if( sel == opt['option'] && (opt['limit'] > 0 || opt['limit'] == -1) ){
+              if( opt['limit']>0 )
+                opt['limit']--;
+              
+              result[sel].push( display.map( i=>row[i] ) );
+              // remove row from content
+              content.splice( i, 1 );
+              i--;
+            }
+          }
+        }
+      }
+      for( let i = 1 ; i < content.length ; i++ ){
+        let row = content[i];
+        result["無抽籤結果"].push( display.map( i=>row[i] ) );
+      }
+
+      return result;
+    }
+  </script>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <a class="navbar-brand p-2" href="#">抽籤服務</a>
+  </nav>
+  <div class="container">
+    <div class="pt-5"></div>
+    <div class="container">
+      <h1>服務說明：</h1>
+      <p class="lead">放入抽籤名單即可抽出該名單的結果，由於抽籤結果是透過名單資訊計算雜湊值並透過其結果排序，因此內容不變則結果保持相同。</p>
+    </div>
+    <hr>
+    <form onsubmit="alert('Not ready'); return false;">
+      <div class="row">
+        <div class="col-12">
+          <label class="lead" for="content">抽籤清單：</label>
+          <br>
+          <textarea id="content" name="content" class="form-control" rows="10">
+學號	姓名	是否住宿	第一志願	第二志願	第三志願	備註
+123	使用者	是	A	B	C	無備註
+321	學生A	是	A	B	C	無備註
+213	學生B	是	A	B	C	無備註</textarea>
+          <textarea id="opt-content" name="opt-content" class="form-control" rows="10" placeholder="數量(-1=無限制);名稱">
+50;A
+-1;B
+-1;C</textarea>
+        </div>
+        <div class="col-12">
+          <p class="lead">分割選擇：</p>
+          <input type="radio" id="delimiter-t" name="delimiter" value="\t" checked>
+          <label class="boxie" for="delimiter-t">\t</label>
+          <input type="radio" id="delimiter-space1" name="delimiter" value=" ">
+          <label class="boxie" for="delimiter-space1">一個空白</label>
+          <input type="radio" id="delimiter-other" name="delimiter" value="other">
+          <input type="text" name="delimiter-other-text" value=",">
+          <label class="boxie" for="delimiter-other">自訂</label>
+        </div>
+        <div class="col-12">
+          <p class="lead">抽籤選項：</p>
+          <div id="option-box"></div>
+        </div>
+        <div class="p-1"></div>
+        <div class="col-12">
+          <p class="lead">顯示選項：</p>
+          <div id="display-box"></div>
+        </div>
+        <div class="p-1"></div>
+        <textarea id="result-box" class="form-control" rows="10"></textarea>
+        <div class="col-12">
+          <button class="btn btn-primary">產生結果</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="p-5"></div>
+  </div>
+</body>
+</html>
